@@ -25,6 +25,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
         password,
         lazyConnect: true,
         maxRetriesPerRequest: 1,
+        retryStrategy: () => null,
       });
 
       this.redisClient.on('connect', () => {
