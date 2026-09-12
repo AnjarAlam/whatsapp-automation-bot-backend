@@ -4,6 +4,10 @@ import { Model, Types } from 'mongoose';
 import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
 import { CacheService } from '../common/services/cache.service';
+import { forwardRef, Inject } from '@nestjs/common';
+import { WhatsappService } from '../whatsapp/services/whatsapp.service';
+import { ConversationsService } from '../conversations/conversations.service';
+import { MessageDirection, MessageStatus } from '../conversations/schemas/message.schema';
 
 @Injectable()
 export class OrdersService {
@@ -11,6 +15,10 @@ export class OrdersService {
     @InjectModel(Order.name)
     private readonly orderModel: Model<OrderDocument>,
     private readonly cacheService: CacheService,
+    @Inject(forwardRef(() => WhatsappService))
+    private readonly whatsappService: WhatsappService,
+    @Inject(forwardRef(() => ConversationsService))
+    private readonly conversationsService: ConversationsService,
   ) {}
 
   async create(userId: string | Types.ObjectId, dto: CreateOrderDto): Promise<OrderDocument> {
@@ -61,10 +69,44 @@ export class OrdersService {
         { $set: { status: dto.status as OrderStatus } },
         { new: true },
       )
+      .populate('customer', 'name mobile')
       .exec();
 
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+
+    if (dto.status === OrderStatus.COMPLETED && order.customer) {
+      const customer = order.customer as any;
+      const itemList = order.items.join(', ');
+      let addressLine = '';
+      if (order.deliveryType === 'Delivery' && order.deliveryAddress) {
+        addressLine = `\\n📍 Delivery Address: *${order.deliveryAddress}*`;
+      } else if (order.tableNumber) {
+        addressLine = `\\n🍽️ Served at Table: *${order.tableNumber}*`;
+      }
+      
+      const messageText = `Hi ${customer.name || 'Customer'},\n\nGreat news! Your order for:\n🍕 *${itemList}*\n\nhas been marked as COMPLETED and is now delivered/served! 🎉${addressLine}\n\nEnjoy your meal and thank you for ordering with us!`;
+      
+      const targetPhone = customer.whatsappJid || customer.mobile;
+
+      try {
+        const sent = await this.whatsappService.sendMessage(userObjId.toString(), targetPhone, messageText);
+        if (sent) {
+          const conversation = await this.conversationsService.findOrCreateConversation(
+            userObjId.toString(),
+            customer._id.toString()
+          );
+          await this.conversationsService.saveMessage(
+            conversation._id.toString(),
+            MessageDirection.OUTGOING,
+            messageText,
+            MessageStatus.SENT,
+          );
+        }
+      } catch (err) {
+        console.error('Failed to send order completion notification:', err);
+      }
     }
 
     await this.cacheService.invalidatePrefix(`user:${userObjId.toString()}:dashboard`);

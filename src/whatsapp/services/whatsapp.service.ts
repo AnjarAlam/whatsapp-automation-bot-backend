@@ -96,6 +96,10 @@ export class WhatsappService implements OnModuleInit {
 
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: userId }),
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+      },
       puppeteer: {
         headless: true,
         args: [
@@ -318,9 +322,32 @@ export class WhatsappService implements OnModuleInit {
     }
 
     try {
-      const jid = phoneNumber.includes('@')
+      let cleanNumber = phoneNumber.replace(/[^\d]/g, '');
+      // Auto-append Indian country code if user missed it
+      if (cleanNumber.length === 10 && !cleanNumber.startsWith('91')) {
+        cleanNumber = `91${cleanNumber}`;
+      }
+
+      let jid = phoneNumber.includes('@')
         ? phoneNumber
-        : `${phoneNumber.replace(/[^\d]/g, '')}@c.us`;
+        : `${cleanNumber}@c.us`;
+
+      // Validate if number actually exists on WhatsApp before sending to prevent crash
+      // Skip validation for LID, groups, or broadcast lists since getNumberId only works for standard phone numbers
+      const isStandardPhone = !phoneNumber.includes('@') || phoneNumber.includes('@c.us') || phoneNumber.includes('@s.whatsapp.net');
+      
+      if (isStandardPhone) {
+        try {
+          const numberId = await client.getNumberId(cleanNumber);
+          if (!numberId) {
+            this.logger.warn(`Number ${cleanNumber} is not registered on WhatsApp. Skipping.`);
+            return false;
+          }
+          jid = numberId._serialized;
+        } catch (e) {
+          this.logger.warn(`Failed to verify number ${cleanNumber}, attempting send anyway.`);
+        }
+      }
 
       if (imageUrl && imageUrl.trim()) {
         try {
@@ -341,5 +368,83 @@ export class WhatsappService implements OnModuleInit {
       this.logger.error(`Error sending message to ${phoneNumber}:`, err);
       return false;
     }
+  }
+
+  async migrateSession(oldId: string, newId: string): Promise<boolean> {
+    const oldObjId = new Types.ObjectId(oldId);
+    const newObjId = new Types.ObjectId(newId);
+
+    this.logger.log(`Migrating WhatsApp session from ${oldId} to ${newId}`);
+
+    // 1. Destroy old client if it exists in memory
+    const oldClient = this.clients.get(oldId);
+    if (this.initializingClients.has(oldId) && oldClient) {
+      (oldClient as any).shouldDestroyImmediately = true;
+      this.initializingClients.delete(oldId);
+    }
+    if (oldClient) {
+      try {
+        await oldClient.destroy();
+      } catch (err) {
+        this.logger.error(`Error destroying old client ${oldId} during migration:`, err);
+      }
+      this.clients.delete(oldId);
+    }
+
+    // 2. Destroy new client if it exists (in case user was already logged in)
+    const newClient = this.clients.get(newId);
+    if (this.initializingClients.has(newId) && newClient) {
+      (newClient as any).shouldDestroyImmediately = true;
+      this.initializingClients.delete(newId);
+    }
+    if (newClient) {
+      try {
+        await newClient.destroy();
+      } catch (err) {
+        this.logger.error(`Error destroying new client ${newId} during migration:`, err);
+      }
+      this.clients.delete(newId);
+    }
+
+    // Wait 2 seconds to ensure Chromium completely releases all file locks on Windows
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // 3. Rename folder
+    const oldPath = path.join(process.cwd(), '.wwebjs_auth', `session-${oldId}`);
+    const newPath = path.join(process.cwd(), '.wwebjs_auth', `session-${newId}`);
+    
+    if (fs.existsSync(newPath)) {
+      try {
+        fs.rmSync(newPath, { recursive: true, force: true });
+      } catch (err) {
+        this.logger.error(`Failed to delete existing new path ${newPath}:`, err);
+      }
+    }
+
+    if (fs.existsSync(oldPath)) {
+      try {
+        fs.renameSync(oldPath, newPath);
+      } catch (err) {
+        this.logger.error(`Failed to rename session folder from ${oldPath} to ${newPath}:`, err);
+        return false;
+      }
+    } else {
+      this.logger.warn(`Old session folder ${oldPath} not found during migration`);
+    }
+
+    // 4. Update DB
+    await this.sessionModel.deleteOne({ userId: newObjId });
+    await this.sessionModel.updateOne(
+      { userId: oldObjId },
+      { $set: { userId: newObjId } }
+    );
+
+    // 5. Connect new client
+    // We don't await because it blocks, but we initiate it
+    this.connect(newId).catch(err => {
+      this.logger.error(`Failed to connect new migrated session for ${newId}:`, err);
+    });
+    
+    return true;
   }
 }

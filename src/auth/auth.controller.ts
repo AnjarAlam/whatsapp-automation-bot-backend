@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -74,5 +75,25 @@ export class AuthController {
   @ApiOperation({ summary: 'Toggle WhatsApp auto-reply bot active/inactive' })
   async toggleBot(@CurrentUser('_id') userId: string) {
     return this.authService.toggleBotActive(userId.toString());
+  }
+
+  @Get('whatsapp-login-init')
+  @ApiOperation({ summary: 'Initialize WhatsApp login session' })
+  @ApiResponse({ status: 200, description: 'Returns a temporary session ID' })
+  async initWhatsappLogin() {
+    return this.authService.initWhatsappLogin();
+  }
+
+  @Get('whatsapp-login-status/:sessionId')
+  @ApiOperation({ summary: 'Check WhatsApp login status' })
+  @ApiResponse({ status: 200, description: 'Returns connection status and QR code or login success' })
+  async checkWhatsappLoginStatus(@Param('sessionId') sessionId: string) {
+    return this.authService.checkWhatsappLoginStatus(sessionId);
+  }
+
+  @Post('whatsapp-login-cancel/:sessionId')
+  @ApiOperation({ summary: 'Cancel temporary WhatsApp login session' })
+  async cancelWhatsappLogin(@Param('sessionId') sessionId: string) {
+    return this.authService.cancelWhatsappLogin(sessionId);
   }
 }

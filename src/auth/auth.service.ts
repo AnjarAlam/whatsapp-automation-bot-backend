@@ -1,13 +1,17 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { Types } from 'mongoose';
 import { UsersService } from '../users/users.service';
+import { WhatsappService } from '../whatsapp/services/whatsapp.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserDocument } from '../users/schemas/user.schema';
@@ -18,6 +22,8 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => WhatsappService))
+    private readonly whatsappService: WhatsappService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -40,6 +46,10 @@ export class AuthService {
     const tokens = await this.generateTokens(user._id.toString(), user.email);
     const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
     await this.usersService.updateRefreshToken(user._id, hashedRefreshToken);
+
+    if (registerDto.tempSessionId) {
+      await this.whatsappService.migrateSession(registerDto.tempSessionId, user._id.toString());
+    }
 
     return {
       user: this.sanitizeUser(user),
@@ -128,5 +138,42 @@ export class AuthService {
   async toggleBotActive(userId: string): Promise<any> {
     const user = await this.usersService.toggleBotActive(userId);
     return this.sanitizeUser(user);
+  }
+
+  async initWhatsappLogin() {
+    const tempSessionId = new Types.ObjectId().toString();
+    const status = await this.whatsappService.connect(tempSessionId);
+    return { tempSessionId, ...status };
+  }
+
+  async checkWhatsappLoginStatus(sessionId: string) {
+    const status = await this.whatsappService.getStatus(sessionId);
+    if (status.status === 'CONNECTED' && status.connectedNumber) {
+      let user = await this.usersService.findByMobile(status.connectedNumber);
+      if (user) {
+        await this.whatsappService.migrateSession(sessionId, user._id.toString());
+        const tokens = await this.generateTokens(user._id.toString(), user.email);
+        const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
+        await this.usersService.updateRefreshToken(user._id, hashedRefreshToken);
+        
+        return {
+          status: 'success',
+          user: this.sanitizeUser(user),
+          tokens
+        };
+      } else {
+        return {
+          status: 'requires_registration',
+          tempSessionId: sessionId,
+          phoneNumber: status.connectedNumber
+        };
+      }
+    }
+    
+    return status;
+  }
+
+  async cancelWhatsappLogin(sessionId: string) {
+    return this.whatsappService.disconnect(sessionId);
   }
 }

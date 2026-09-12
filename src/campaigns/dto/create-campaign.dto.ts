@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { CampaignType } from '../schemas/campaign.schema';
 
 export class CreateCampaignDto {
@@ -36,11 +36,14 @@ export class CreateCampaignDto {
 
   @ApiPropertyOptional({ example: ['60d5ec4b9b1d8b3a7c88b901'], description: 'Target customer ID list' })
   @IsOptional()
-  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   targetCustomers?: string[];
 
   @ApiPropertyOptional({ example: ['VIP', 'Regular'], description: 'Target tag list' })
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   targetTags?: string[];
 
   @ApiPropertyOptional({ example: 'https://images.unsplash.com/...', description: 'Optional campaign header image URL' })

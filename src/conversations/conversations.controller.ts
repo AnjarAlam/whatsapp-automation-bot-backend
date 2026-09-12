@@ -52,12 +52,13 @@ export class ConversationsController {
       id,
     );
 
-    const customerMobile = (conversation.customerId as any).mobile;
+    const customer = conversation.customerId as any;
+    const targetPhone = customer.whatsappJid || customer.mobile;
 
     // Send via WhatsApp socket
     const success = await this.whatsappService.sendMessage(
       userId.toString(),
-      customerMobile,
+      targetPhone,
       dto.message,
       dto.imageUrl,
     );

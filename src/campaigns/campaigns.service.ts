@@ -6,15 +6,15 @@ import { Queue } from 'bullmq';
 import { Campaign, CampaignDocument, CampaignStatus } from './schemas/campaign.schema';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { CacheService } from '../common/services/cache.service';
+import { CampaignProcessor } from './processors/campaign.processor';
 
 @Injectable()
 export class CampaignsService {
   constructor(
     @InjectModel(Campaign.name)
     private readonly campaignModel: Model<CampaignDocument>,
-    @InjectQueue('campaign-sending')
-    private readonly campaignQueue: Queue,
     private readonly cacheService: CacheService,
+    private readonly campaignProcessor: CampaignProcessor,
   ) {}
 
   async create(userId: string | Types.ObjectId, dto: CreateCampaignDto): Promise<CampaignDocument> {
@@ -41,11 +41,12 @@ export class CampaignsService {
     if (dto.scheduledAt) {
       const delay = new Date(dto.scheduledAt).getTime() - Date.now();
       if (delay > 0) {
-        await this.campaignQueue.add(
-          'execute-campaign',
-          { campaignId: savedCampaign._id.toString(), userId: userObjId.toString() },
-          { delay },
-        );
+        // Schedule execution natively instead of BullMQ
+        setTimeout(() => {
+          this.campaignProcessor.process({ data: { campaignId: savedCampaign._id.toString(), userId: userObjId.toString() } } as any).catch(err => {
+            console.error('Scheduled campaign execution failed', err);
+          });
+        }, delay);
       }
     }
 
@@ -66,10 +67,14 @@ export class CampaignsService {
     await this.cacheService.invalidatePrefix(`user:${userObjId.toString()}:dashboard`);
     await this.cacheService.invalidatePrefix(`user:${userObjId.toString()}:campaigns`);
 
-    // Add job to BullMQ queue immediately
-    await this.campaignQueue.add('execute-campaign', {
-      campaignId: campaign._id.toString(),
-      userId: userObjId.toString(),
+    // Execute in background immediately instead of BullMQ
+    this.campaignProcessor.process({
+      data: {
+        campaignId: campaign._id.toString(),
+        userId: userObjId.toString(),
+      }
+    } as any).catch(err => {
+      console.error('Background campaign execution failed', err);
     });
 
     return campaign;

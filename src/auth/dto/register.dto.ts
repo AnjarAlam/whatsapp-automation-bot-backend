@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'John Doe', description: 'Full name of business owner' })
@@ -26,4 +26,9 @@ export class RegisterDto {
   @IsString()
   @MinLength(6)
   password: string;
+
+  @ApiProperty({ example: '507f1f77bcf86cd799439011', description: 'Temporary WhatsApp session ID to link during registration', required: false })
+  @IsString()
+  @IsOptional()
+  tempSessionId?: string;
 }

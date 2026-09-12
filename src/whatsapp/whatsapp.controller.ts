@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Body, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { WhatsappService } from './services/whatsapp.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -32,5 +32,22 @@ export class WhatsappController {
   @ApiResponse({ status: 200, description: 'Current WhatsApp session status' })
   async getStatus(@CurrentUser('_id') userId: string) {
     return this.whatsappService.getStatus(userId.toString());
+  }
+
+  @Post('send')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send a direct WhatsApp message to a number' })
+  async sendMessage(
+    @CurrentUser('_id') userId: string,
+    @Body() body: { mobile: string; message: string }
+  ) {
+    if (!body.mobile || !body.message) {
+      throw new BadRequestException('Mobile number and message are required');
+    }
+    const sent = await this.whatsappService.sendMessage(userId.toString(), body.mobile, body.message);
+    if (!sent) {
+      throw new BadRequestException('Failed to send message. Check WhatsApp connection or number validity.');
+    }
+    return { success: true, message: 'Message sent successfully' };
   }
 }

@@ -112,9 +112,11 @@ export class CampaignProcessor extends WorkerHost {
           }
         }
 
+        const targetPhone = customer.whatsappJid || customer.mobile;
+        
         const isSuccess = await this.whatsappService.sendMessage(
           userId,
-          customer.mobile,
+          targetPhone,
           personalizedMessage,
           (campaign as any).imageUrl,
         );
