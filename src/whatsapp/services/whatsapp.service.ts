@@ -102,6 +102,7 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
