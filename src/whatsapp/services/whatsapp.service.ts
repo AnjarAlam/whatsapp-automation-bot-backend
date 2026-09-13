@@ -97,8 +97,7 @@ export class WhatsappService implements OnModuleInit {
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: userId }),
       webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        type: 'local',
       },
       puppeteer: {
         headless: true,
@@ -110,7 +109,9 @@ export class WhatsappService implements OnModuleInit {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--disable-gpu'
+          '--disable-gpu',
+          '--single-process',
+          '--no-zygote'
         ],
       },
     });
