@@ -94,6 +94,22 @@ export class WhatsappService implements OnModuleInit {
       { upsert: true },
     );
 
+    const getChromiumPath = () => {
+      if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+        return process.env.PUPPETEER_EXECUTABLE_PATH;
+      }
+      const knownPaths = [
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+      ];
+      for (const p of knownPaths) {
+        if (fs.existsSync(p)) return p;
+      }
+      return undefined;
+    };
+
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: userId }),
       webVersionCache: {
@@ -101,7 +117,7 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        executablePath: getChromiumPath(),
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
@@ -110,8 +126,6 @@ export class WhatsappService implements OnModuleInit {
           '--no-first-run',
           '--no-zygote',
           '--disable-gpu',
-          '--single-process',
-          '--no-zygote'
         ],
       },
     });
