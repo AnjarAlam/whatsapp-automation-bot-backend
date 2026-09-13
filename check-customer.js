@@ -1,7 +1,14 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 
 async function test() {
-  await mongoose.connect('mongodb+srv://alamanjar966_db_user:1IRJhnhdgqZW0XNX@cluster0.cuh9ywb.mongodb.net/');
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    console.error('MONGODB_URI environment variable is not defined in .env');
+    process.exit(1);
+  }
+
+  await mongoose.connect(mongoUri);
   
   const customerId = '6aa559410bcccaa3cc25c230';
   
@@ -21,3 +28,4 @@ async function test() {
 }
 
 test().catch(console.error);
+
