@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -85,6 +86,9 @@ export class AuthController {
   }
 
   @Get('whatsapp-login-status/:sessionId')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   @ApiOperation({ summary: 'Check WhatsApp login status' })
   @ApiResponse({ status: 200, description: 'Returns connection status and QR code or login success' })
   async checkWhatsappLoginStatus(@Param('sessionId') sessionId: string) {
